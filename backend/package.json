@@ -15,6 +15,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/imap": "^0.8.42",
+    "@types/mailparser": "^3.4.6",
     "@types/node": "^24.1.0",
     "@types/node-imap": "^0.9.3",
     "ts-node-dev": "^2.0.0",
