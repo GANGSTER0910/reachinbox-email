@@ -34,15 +34,16 @@ export class ImapService {
     this.imap.once('ready', () => {
       this.openInbox((err, box) => {
         if (err) throw err;
-        console.log('📥 INBOX opened. Total messages:', box.messages.total);
+        console.log('Total messages:', box.messages.total);
 
         const sinceDate = new Date();
-        sinceDate.setDate(sinceDate.getDate() - 1);
+        sinceDate.setDate(sinceDate.getDate() - 30);
 
         const searchCriteria = ['ALL', ['SINCE', sinceDate.toISOString()]];
         const fetchOptions = {
-          bodies: ['HEADER.FIELDS (FROM TO SUBJECT DATE)', 'TEXT'],
+          bodies: [],
           struct: true,
+          attributes: ['UID']
         };
 
         this.imap.search(searchCriteria, (err, results) => {
@@ -52,7 +53,7 @@ export class ImapService {
             console.log('No emails from the last 30 days.');
           } else {
             console.log(`Found ${results.length} emails from the last 30 days.`);
-
+            // results.sort((a, b) => a - b);
             const f = this.imap.fetch(results, fetchOptions);
             f.on('message', (msg, seqno) => {
               msg.once('attributes', (attrs) => {
@@ -64,6 +65,7 @@ export class ImapService {
             });
 
             f.once('end', () => {
+              this.startIdle();
             });
           }
         });
@@ -101,10 +103,16 @@ export class ImapService {
     this.imap.once('end', () => {
       console.log('IMAP connection closed.');
     });
-
+setTimeout(() => {
+        console.log('Attempting to reconnect IMAP...');
+        this.imap.connect();
+      }, 5000); 
     this.imap.connect();
   }
 
+   private startIdle(): void {
+    console.log('IMAP in IDLE mode, waiting for new mail...');
+  }
   private handleMessage(msg: Imap.ImapMessage, seqno: number, account: string, folder: string): void {
     let buffer = '';
 

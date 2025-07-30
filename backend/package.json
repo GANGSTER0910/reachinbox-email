@@ -23,12 +23,17 @@
   },
   "dependencies": {
     "@elastic/elasticsearch": "^9.0.3",
+    "@langchain/core": "^0.3.66",
+    "@langchain/google-genai": "^0.2.16",
+    "@langchain/groq": "^0.2.3",
     "@slack/web-api": "^7.9.3",
+    "@slack/webhook": "^7.0.5",
     "axios": "^1.11.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "imap": "^0.8.19",
+    "langchain": "^0.3.30",
     "mailparser": "^3.7.4",
     "node-imap": "^0.9.6"
   }
