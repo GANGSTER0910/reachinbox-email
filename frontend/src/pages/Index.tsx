@@ -10,6 +10,11 @@ const Index = () => {
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
 
+  const handleEmailSelect = (emailId: string) => {
+    console.log('🎯 Index: Email selected:', emailId);
+    setSelectedEmailId(emailId);
+  };
+
   return (
     <div className="h-screen bg-background flex overflow-hidden">
       <EmailSidebar
@@ -23,16 +28,24 @@ const Index = () => {
         onSearchChange={setSearchTerm}
       />
       
-      <EmailList
-        selectedEmailId={selectedEmailId}
-        onEmailSelect={setSelectedEmailId}
-        searchTerm={searchTerm}
-        selectedAccount={selectedAccount}
-        selectedFolder={selectedFolder}
-        selectedCategory={selectedCategory}
-      />
-      
-      <EmailDetail emailId={selectedEmailId} />
+      <div className="flex flex-1 min-w-0">
+        <EmailList
+          selectedEmailId={selectedEmailId}
+          onEmailSelect={handleEmailSelect}
+          searchTerm={searchTerm}
+          selectedAccount={selectedAccount}
+          selectedFolder={selectedFolder}
+          selectedCategory={selectedCategory}
+        />
+        
+        <EmailDetail 
+          emailId={selectedEmailId}
+          // searchTerm={searchTerm}
+          // selectedAccount={selectedAccount}
+          // selectedFolder={selectedFolder}
+          // selectedCategory={selectedCategory} 
+        />
+      </div>
     </div>
   );
 };

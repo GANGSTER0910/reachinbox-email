@@ -2,14 +2,13 @@ import { inspect } from 'util';
 import dotenv from 'dotenv';
 import Imap from 'node-imap';
 import { indexEmail } from '../utils/indexemail';
-import{simpleParser} from 'mailparser';
+import { simpleParser } from 'mailparser';
 import { htmlToText } from 'html-to-text';
 import he from 'he';
 dotenv.config();
 
 export class ImapService {
   private imap: Imap;
-  private lastSeenUID: number = 0;
 
   constructor(
     private user: string,
@@ -33,165 +32,94 @@ export class ImapService {
   }
 
   public connectrealtime(): void {
-    console.log(`🔌 Attempting to connect to IMAP: ${this.user}@${this.host}`);
-    
     this.imap.once('ready', () => {
       console.log(`✅ IMAP connection ready for ${this.user}`);
       this.openInbox((err, box) => {
-        if (err) {
-          console.error(`❌ Error opening inbox for ${this.user}:`, err);
-          throw err;
-        }
-        console.log(`📬 Total messages in inbox for ${this.user}:`, box.messages.total);
-
-        const sinceDate = new Date();
-        sinceDate.setDate(sinceDate.getDate() - 90);
-        console.log(`🔍 Searching for emails since: ${sinceDate.toISOString()}`);
-
-        const searchCriteria = ['ALL', ['SINCE', sinceDate.toISOString()]];
-        const fetchOptions = {
-          bodies: [],
-          struct: true,
-          attributes: ['UID']
-        };
-
-        this.imap.search(searchCriteria, (err, results) => {
-          if (err) {
-            console.error(`❌ Search error for ${this.user}:`, err);
-            throw err;
-          }
-
-          if (!results.length) {
-            console.log(`📭 No emails found for ${this.user} from the last 90 days.`);
-          } else {
-            console.log(`📧 Found ${results.length} emails for ${this.user} from the last 90 days.`);
-            results.sort((a, b) => a - b);
-            const f = this.imap.fetch(results, fetchOptions);
-            f.on('message', (msg, seqno) => {
-              console.log(`📨 Processing message #${seqno} for ${this.user}`);
-              msg.once('attributes', (attrs) => {
-                if (attrs.uid > this.lastSeenUID) {
-                  this.lastSeenUID = attrs.uid;
-                }
-              });
-              this.handleMessage(msg, seqno, this.user, 'INBOX');
-            });
-
-            f.once('end', () => {
-              console.log(`✅ Finished fetching emails for ${this.user}`);
-              this.startIdle();
-            });
-          }
-        });
-
-        this.imap.on('mail', (numNewMsgs: number) => {
-          console.log(`${numNewMsgs} new message(s) arrived!`);
-
-          const startUID = this.lastSeenUID + 1;
-          const endUID = startUID + numNewMsgs - 1;
-
-          const fetch = this.imap.fetch(`${startUID}:${endUID}`, fetchOptions);
-
-          fetch.on('message', (msg, seqno) => {
-            msg.once('attributes', (attrs) => {
-              if (attrs.uid > this.lastSeenUID) {
-                this.lastSeenUID = attrs.uid;
-              }
-            });
-            this.handleMessage(msg, seqno, this.user, 'INBOX');
-          });
-
-          fetch.once('error', (err: Error) => {
-            console.error('Realtime fetch error:', err);
-          });
-
-          fetch.once('end', () => {
-           });
-        });
+        if (err) return console.error(`❌ Error opening inbox for ${this.user}:`, err);
+        console.log(`📬 Inbox opened for ${this.user}.`);
+        this.fetchInitialEmails();
       });
     });
 
-    this.imap.once('error', (err: Error) => {
-      console.error(`❌ IMAP connection error for ${this.user}:`, err.message);
+    this.imap.on('mail', (numNewMsgs: number) => {
+        console.log(`📬 New mail event: ${numNewMsgs} new message(s) arrived!`);
+        this.fetchNewEmails(numNewMsgs);
     });
 
-    this.imap.once('end', () => {
-      console.log(`🔌 IMAP connection closed for ${this.user}.`);
+    this.imap.on('error', (err: Error) => console.error(`❌ IMAP connection error for ${this.user}:`, err.message));
+    this.imap.on('close', (hadError: boolean) => {
+        console.log(`🔌 IMAP connection closed for ${this.user}. Reconnecting in 10 seconds...`);
+        setTimeout(() => this.imap.connect(), 10000);
     });
     
-    setTimeout(() => {
-      console.log(`🔄 Attempting to reconnect IMAP for ${this.user}...`);
-      this.imap.connect();
-    }, 5000); 
-    
-    console.log(`🚀 Connecting to IMAP for ${this.user}...`);
     this.imap.connect();
   }
 
-   private startIdle(): void {
-    console.log('IMAP in IDLE mode, waiting for new mail...');
+  public triggerManualFetch(): void {
+    console.log(`🔄 Triggering manual email fetch for ${this.user}...`);
+    this.fetchInitialEmails();
   }
-  private handleMessage(msg: Imap.ImapMessage, seqno: number, account: string, folder: string): void {
-    let buffer = '';
-    console.log(`📨 Starting to process message #${seqno} for ${account}`);
 
-    msg.on('body', (stream, info) => {
-      console.log(`📥 Receiving body for message #${seqno}`);
-      stream.on('data', (chunk) => {
-        buffer += chunk.toString('utf8');
+  private fetchInitialEmails(): void {
+    const sinceDate = new Date();
+    sinceDate.setDate(sinceDate.getDate() - 90);
+    const searchCriteria = [['SINCE', sinceDate.toISOString()]];
+    const fetchOptions = { bodies: '', struct: true };
+
+    this.imap.search(searchCriteria, (err, results) => {
+      if (err || !results || results.length === 0) {
+        if (err) console.error(`❌ Initial search error for ${this.user}:`, err);
+        console.log(`📭 No new emails found for initial sync.`);
+        return;
+      }
+
+      const f = this.imap.fetch(results, fetchOptions);
+      f.on('message', (msg, seqno) => this.handleMessage(msg, this.user, 'inbox'));
+      f.once('error', (err) => console.error('❌ Error fetching initial emails:', err));
+      f.once('end', () => {
+        console.log(`✅ Finished fetching all initial emails for ${this.user}.`);
       });
+    });
+  }
+  
+  private fetchNewEmails(numNewMsgs: number): void {
+     this.openInbox((err, box) => {
+        if (err) return console.error('❌ Error opening inbox for new mail fetch:', err);
+        if(numNewMsgs > 0){
+            const f = this.imap.fetch(`${box.messages.total - numNewMsgs + 1}:*`, { bodies: '', struct: true });
+            f.on('message', (msg, seqno) => this.handleMessage(msg, this.user, 'inbox'));
+            f.once('error', (err) => console.error('❌ Error fetching new emails:', err));
+            f.once('end', () => {
+                console.log('✅ Finished fetching new emails.');
+            });
+        }
+    });
+  }
 
-      stream.on('end', async () => {
-        console.log(`📝 Finished receiving body for message #${seqno}, size: ${buffer.length} bytes`);
+  private handleMessage(msg: Imap.ImapMessage, account: string, folder: string): void {
+    let buffer = '';
+    msg.on('body', (stream) => {
+      stream.on('data', (chunk) => buffer += chunk.toString('utf8'));
+      stream.once('end', async () => {
         try {
           const parsed = await simpleParser(buffer);
-          
-          // Always use decoded subject/from/to/text
-          const subject = parsed.subject || '';
-          const fromText = parsed.from?.text || '';
-          const toText = parsed.to?.text || '';
-
-          console.log(`📧 Parsed email for ${account}: Subject="${subject}", From="${fromText}"`);
-
-          // Get clean text body
-          let cleanText = parsed.text;
-          if (!cleanText && parsed.html) {
-            cleanText = htmlToText(parsed.html, { wordwrap: false });
-          }
-          if (cleanText) {
-            cleanText = he.decode(cleanText);
-          } else {
-            cleanText = '';
-          }
-
           await indexEmail({
-            subject,
-            from: fromText,
-            to: toText,
-            text: cleanText,
-            html: parsed.html,
-            folder,
+            subject: parsed.subject || '',
+            from: parsed.from?.text || '',
+            to: Array.isArray(parsed.to)
+              ? parsed.to.map(addrObj => (addrObj as any).address || '').join(', ')
+              : (parsed.to && (parsed.to as any).text) || '',
+            text: parsed.text || '',
+            html: parsed.html || '',
+            folder: folder,
             account,
             date: parsed.date || new Date(),
             messageId: parsed.messageId,
           });
-
-          console.log(`✅ Email indexed to Elasticsearch for ${account}: ${subject}`);
         } catch (err) {
-          console.error(`❌ Failed to parse or index message #${seqno} for ${account}:`, err);
+          console.error(`❌ Failed to parse or index message:`, err);
         }
       });
     });
-    msg.once('attributes', (attrs) => {
-      console.log('📎 Attributes:', inspect(attrs, false, 8, true));
-    });
-
-    msg.once('end', () => {
-      console.log(`Finished message #${seqno}`);
-    });
-  }
-
-  private isPrintable(str: string): boolean {
-    return /^[\x20-\x7E\s]*$/.test(str);
   }
 }

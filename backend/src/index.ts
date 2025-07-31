@@ -3,58 +3,25 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import {ImapService} from './services/imapservice';
 import {category} from './agent/categorizedai';
-import { sendemailnotification, sendWebhookSiteNotification } from './slack_webhook/webhook';
 import { esClient } from './services/elasticsearch';
+
 dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 const emailAccounts = [
-  {
-    user: process.env.EMAIL_USER!,
-    password: process.env.EMAIL_PASS!,
-    name: 'Primary Account'
-  },
-  {
-    user: process.env.EMAIL_USER_2!,
-    password: process.env.EMAIL_PASS_2!,
-    name: 'Secondary Account'
-  }
+  { user: process.env.EMAIL_USER!, password: process.env.EMAIL_PASS! },
+  { user: process.env.EMAIL_USER_2!, password: process.env.EMAIL_PASS_2! }
 ].filter(account => account.user && account.password); 
 
 app.use(cors());
 app.use(express.json());
 
 const imapServices: ImapService[] = [];
-emailAccounts.forEach((account, index) => {
-  if (account.user && account.password) {
-    const imapService = new ImapService(account.user, account.password);
-    imapService.connectrealtime();
-    imapServices.push(imapService);
-    console.log(`✅ Connected to IMAP account ${index + 1}: ${account.name}`);
-  }
-});
-
-app.get('/', (_req, res) => {
-  res.send('Email Backend Running');
-});
-
-// Add Elasticsearch health check
-app.get('/health', async (_req, res) => {
-  try {
-    const health = await esClient.cluster.health();
-    res.json({
-      status: 'healthy',
-      elasticsearch: health,
-      message: 'Backend and Elasticsearch are running'
-    });
-  } catch (error) {
-    res.status(500).json({
-      status: 'error',
-      error: error.message,
-      message: 'Elasticsearch connection failed'
-    });
-  }
+emailAccounts.forEach(account => {
+  const imapService = new ImapService(account.user, account.password);
+  imapService.connectrealtime();
+  imapServices.push(imapService);
 });
 
 app.get('/search', async (req, res) => {
@@ -64,78 +31,24 @@ app.get('/search', async (req, res) => {
       folder = '', 
       accountId = '', 
       category = '',
-      from = '',
-      to = '',
       page = 1,
-      limit = 20
+      limit = 100 
     } = req.query;
 
-    // Check if index exists
-    const indexExists = await esClient.indices.exists({
-      index: 'emails'
-    });
-
+    const indexExists = await esClient.indices.exists({ index: 'emails' });
     if (!indexExists) {
-      // Return empty results if index doesn't exist
-      return res.json({
-        hits: [],
-        total: 0,
-        page: Number(page),
-        limit: Number(limit)
-      });
+      return res.json({ hits: [], total: 0, page: 1, limit: 100 });
     }
 
     const must: any[] = [];
-    
-    // Add date filter for last 30 days by default
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    
-    must.push({
-      range: {
-        date: {
-          gte: thirtyDaysAgo.toISOString(),
-          lte: new Date().toISOString()
-        }
-      }
-    });
-    
-    if (query) {
-      must.push({
-        multi_match: {
-          query: query as string,
-          fields: ['subject^2', 'text', 'from', 'to'],
-          fuzziness: 'AUTO'
-        }
-      });
-    }
-
-    if (folder) {
-      must.push({ match: { folder: folder as string } });
-    }
-
-    if (accountId) {
-      must.push({ match: { accountId: accountId as string } });
-    }
-    if (category) {
-      must.push({ match: { category: category as string } });
-    }
-    if (from) {
-      must.push({ match: { from: from as string } });
-    }
-    if (to) {
-      must.push({ match: { to: to as string } });
-    }
+    if (query) must.push({ multi_match: { query: query as string, fields: ['subject', 'text', 'from', 'to'], fuzziness: 'AUTO' } });
+    if (folder) must.push({ term: { 'folder.keyword': folder as string } });
+    if (accountId) must.push({ term: { 'accountId.keyword': accountId as string } });
+    if (category) must.push({ term: { 'category.keyword': category as string } });
 
     const searchBody: any = {
-      query: {
-        bool: {
-          must: must.length > 0 ? must : [{ match_all: {} }]
-        }
-      },
-      sort: [
-        { date: { order: 'desc' } }
-      ],
+      query: { bool: { must: must.length > 0 ? must : { match_all: {} } } },
+      sort: [{ date: { order: 'desc' } }],
       from: (Number(page) - 1) * Number(limit),
       size: Number(limit)
     };
@@ -145,15 +58,10 @@ app.get('/search', async (req, res) => {
       body: searchBody
     });
 
-    const total = typeof result.hits.total === 'object' 
-      ? result.hits.total.value 
-      : result.hits.total;
+    const total = typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total;
 
     res.json({
-      hits: result.hits.hits.map((hit: any) => ({
-        id: hit._id,
-        ...hit._source
-      })),
+      hits: result.hits.hits.map((hit: any) => ({ id: hit._id, ...hit._source })),
       total: total || 0,
       page: Number(page),
       limit: Number(limit)
@@ -166,129 +74,55 @@ app.get('/search', async (req, res) => {
 
 app.get('/stats', async (req, res) => {
   try {
-    // First check if the index exists
-    const indexExists = await esClient.indices.exists({
-      index: 'emails'
-    });
+    const { folder = '', accountId = '', category = '' } = req.query;
 
+    const indexExists = await esClient.indices.exists({ index: 'emails' });
     if (!indexExists) {
-      // Return empty stats if index doesn't exist
-      return res.json({
-        total: 0,
-        categories: [],
-        folders: [],
-        accounts: []
-      });
+      return res.json({ total: 0, categories: [], folders: [], accounts: [] });
     }
+
+    const must: any[] = [];
+    if (folder) must.push({ term: { 'folder.keyword': folder as string } });
+    if (accountId) must.push({ term: { 'accountId.keyword': accountId as string } });
+    if (category) must.push({ term: { 'category.keyword': category as string } });
+
+    const query = { bool: { must: must.length > 0 ? must : { match_all: {} } } };
 
     const result = await esClient.search({
       index: 'emails',
-      body: {
-        size: 0,
-        aggs: {
-          categories: {
-            terms: { field: 'category.keyword', size: 20 }
-          },
-          folders: {
-            terms: { field: 'folder.keyword', size: 20 }
-          },
-          accounts: {
-            terms: { field: 'accountId.keyword', size: 20 }
-          },
-          total_emails: {
-            value_count: { field: '_id' }
-          }
-        }
+      size: 0, 
+      aggs: {
+        categories: { terms: { field: 'category.keyword', size: 20 } },
+        folders: { terms: { field: 'folder.keyword', size: 20 } },
+        accounts: { terms: { field: 'accountId.keyword', size: 20 } }
       }
     } as any);
-
+    
+    const total = typeof result.hits.total === 'object' ? result.hits.total.value : result.hits.total;
     const aggregations = result.aggregations as any;
 
     res.json({
-      total: aggregations?.total_emails?.value || 0,
+      total: total || 0,
       categories: aggregations?.categories?.buckets || [],
       folders: aggregations?.folders?.buckets || [],
       accounts: aggregations?.accounts?.buckets || []
     });
   } catch (error) {
     console.error('Stats error:', error);
-    // Return empty stats instead of error for better UX
-    res.json({
-      total: 0,
-      categories: [],
-      folders: [],
-      accounts: []
-    });
+    res.status(500).json({ error: 'Failed to get stats' });
   }
 });
 
-app.post('/category', async (req, res) => {
-  const { emailContent } = req.body;
-  if (!emailContent) {
-    return res.status(400).json({ error: 'Email content is required' });
-  }
+app.get('/email/:id', async (req, res) => {
   try {
-    const categoryResult = await category(emailContent);
-    res.json({ category: categoryResult });
-  } catch (error) {
-    console.error('Error categorizing email:', error);
-    res.status(500).json({ error: 'Failed to categorize email' });
-  }
-});
-
-app.post('/test-notifications', async (req, res) => {
-  try {
-    const testEmail = {
-      subject: 'Test Email - Interested',
-      from: 'test@example.com',
-      to: 'user@example.com',
-      text: 'This is a test email to verify notifications are working.',
-      folder: 'INBOX',
-      accountId: 'test-account',
-      date: new Date(),
-      messageId: 'test-message-id',
-      category: 'Interested' as const,
-      bodyPreview: 'This is a test email to verify notifications are working.'
-    };
-
-    console.log('🧪 Testing notifications...');
-    
-    await sendemailnotification(testEmail);
-    await sendWebhookSiteNotification(testEmail);
-    
-    res.json({ 
-      success: true, 
-      message: 'Test notifications sent successfully. Check your Slack and webhook.site for the test messages.' 
-    });
-  } catch (error) {
-    console.error('Error testing notifications:', error);
-    res.status(500).json({ error: 'Failed to send test notifications' });
-  }
-});
-
-// Add manual email fetch trigger
-app.post('/fetch-emails', async (req, res) => {
-  try {
-    console.log('🔄 Manually triggering email fetch...');
-    
-    // Trigger email fetching for all connected accounts
-    for (const imapService of imapServices) {
-      console.log('Fetching emails for account...');
-      // This will trigger the email fetching process
-      imapService.connectrealtime();
-    }
-    
-    res.json({ 
-      success: true, 
-      message: 'Email fetching triggered. Check your backend logs for progress.' 
-    });
-  } catch (error) {
-    console.error('Error triggering email fetch:', error);
-    res.status(500).json({ error: 'Failed to trigger email fetch' });
+    const { id } = req.params;
+    const result = await esClient.get({ index: 'emails', id });
+    res.json({ id: result._id, ...(typeof result._source === 'object' && result._source !== null ? result._source : {}) });
+  } catch (error: any) {
+    res.status(error.statusCode === 404 ? 404 : 500).json({ error: 'Failed to fetch email' });
   }
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`📧 Connected to ${imapServices.length} IMAP account(s)`);
 });
