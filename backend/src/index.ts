@@ -52,7 +52,35 @@ app.get('/search', async (req, res) => {
       limit = 20
     } = req.query;
 
+    // Check if index exists
+    const indexExists = await esClient.indices.exists({
+      index: 'emails'
+    });
+
+    if (!indexExists) {
+      // Return empty results if index doesn't exist
+      return res.json({
+        hits: [],
+        total: 0,
+        page: Number(page),
+        limit: Number(limit)
+      });
+    }
+
     const must: any[] = [];
+    
+    // Add date filter for last 30 days by default
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    
+    must.push({
+      range: {
+        date: {
+          gte: thirtyDaysAgo.toISOString(),
+          lte: new Date().toISOString()
+        }
+      }
+    });
     
     if (query) {
       must.push({
@@ -120,19 +148,34 @@ app.get('/search', async (req, res) => {
 
 app.get('/stats', async (req, res) => {
   try {
+    // First check if the index exists
+    const indexExists = await esClient.indices.exists({
+      index: 'emails'
+    });
+
+    if (!indexExists) {
+      // Return empty stats if index doesn't exist
+      return res.json({
+        total: 0,
+        categories: [],
+        folders: [],
+        accounts: []
+      });
+    }
+
     const result = await esClient.search({
       index: 'emails',
       body: {
         size: 0,
         aggs: {
           categories: {
-            terms: { field: 'category.keyword' }
+            terms: { field: 'category.keyword', size: 20 }
           },
           folders: {
-            terms: { field: 'folder.keyword' }
+            terms: { field: 'folder.keyword', size: 20 }
           },
           accounts: {
-            terms: { field: 'accountId.keyword' }
+            terms: { field: 'accountId.keyword', size: 20 }
           },
           total_emails: {
             value_count: { field: '_id' }
@@ -151,7 +194,13 @@ app.get('/stats', async (req, res) => {
     });
   } catch (error) {
     console.error('Stats error:', error);
-    res.status(500).json({ error: 'Failed to get statistics' });
+    // Return empty stats instead of error for better UX
+    res.json({
+      total: 0,
+      categories: [],
+      folders: [],
+      accounts: []
+    });
   }
 });
 

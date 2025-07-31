@@ -53,7 +53,7 @@ export class ImapService {
             console.log('No emails from the last 30 days.');
           } else {
             console.log(`Found ${results.length} emails from the last 30 days.`);
-            // results.sort((a, b) => a - b);
+            results.sort((a, b) => a - b);
             const f = this.imap.fetch(results, fetchOptions);
             f.on('message', (msg, seqno) => {
               msg.once('attributes', (attrs) => {
