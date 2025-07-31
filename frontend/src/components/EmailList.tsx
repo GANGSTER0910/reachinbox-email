@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Star, Paperclip, Reply, Forward, Trash2, Archive, Bot, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, extractEmailInfo } from "@/lib/utils";
 import { useEmailsForUI } from "@/hooks/useEmails";
 import { useToast } from "@/hooks/use-toast";
 
@@ -22,60 +22,6 @@ interface Email {
   account: string;
 }
 
-const mockEmails: Email[] = [
-  {
-    id: "1",
-    from: "Sarah Johnson",
-    fromEmail: "sarah.johnson@techcorp.com",
-    subject: "Regarding the Frontend Developer Position",
-    preview: "Hi, I came across your profile and I'm impressed with your React expertise. We have an exciting opportunity...",
-    timestamp: "2 min ago",
-    isRead: false,
-    isStarred: true,
-    hasAttachment: false,
-    category: "interested",
-    account: "work@company.com"
-  },
-  {
-    id: "2",
-    from: "David Chen",
-    fromEmail: "david@startup.io",
-    subject: "Interview Scheduled - Full Stack Role",
-    preview: "Great! I've scheduled your technical interview for tomorrow at 2 PM. Please find the meeting details...",
-    timestamp: "1 hour ago",
-    isRead: false,
-    isStarred: false,
-    hasAttachment: true,
-    category: "meeting-booked",
-    account: "personal@gmail.com"
-  },
-  {
-    id: "3",
-    from: "Recruitment Team",
-    fromEmail: "hr@bigcorp.com",
-    subject: "Thank you for your application",
-    preview: "Thank you for your interest in our company. Unfortunately, we have decided to move forward with other candidates...",
-    timestamp: "3 hours ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachment: false,
-    category: "not-interested",
-    account: "work@company.com"
-  },
-  {
-    id: "4",
-    from: "Alex Rodriguez",
-    fromEmail: "alex@outofoffice.com",
-    subject: "Out of Office: Will respond next week",
-    preview: "Thank you for your email. I am currently out of office and will respond to your message when I return...",
-    timestamp: "5 hours ago",
-    isRead: true,
-    isStarred: false,
-    hasAttachment: false,
-    category: "out-of-office",
-    account: "personal@gmail.com"
-  },
-];
 
   const categoryConfig = {
     interested: { color: "bg-category-interested text-white", label: "Interested" },
@@ -209,7 +155,7 @@ export function EmailList({
                         "font-semibold text-foreground truncate",
                         !email.isRead && "font-bold"
                       )}>
-                        {email.from || 'Unknown Sender'}
+                        {email.from}
                       </h3>
                       <Badge 
                         className={cn("text-xs px-2 py-0.5", getCategoryConfig(email.category).color)}

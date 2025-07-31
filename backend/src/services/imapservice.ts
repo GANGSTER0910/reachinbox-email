@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import Imap from 'node-imap';
 import { indexEmail } from '../utils/indexemail';
 import{simpleParser} from 'mailparser';
+import { htmlToText } from 'html-to-text';
+import he from 'he';
 dotenv.config();
 
 export class ImapService {
@@ -31,13 +33,20 @@ export class ImapService {
   }
 
   public connectrealtime(): void {
+    console.log(`🔌 Attempting to connect to IMAP: ${this.user}@${this.host}`);
+    
     this.imap.once('ready', () => {
+      console.log(`✅ IMAP connection ready for ${this.user}`);
       this.openInbox((err, box) => {
-        if (err) throw err;
-        console.log('Total messages:', box.messages.total);
+        if (err) {
+          console.error(`❌ Error opening inbox for ${this.user}:`, err);
+          throw err;
+        }
+        console.log(`📬 Total messages in inbox for ${this.user}:`, box.messages.total);
 
         const sinceDate = new Date();
-        sinceDate.setDate(sinceDate.getDate() - 30);
+        sinceDate.setDate(sinceDate.getDate() - 90);
+        console.log(`🔍 Searching for emails since: ${sinceDate.toISOString()}`);
 
         const searchCriteria = ['ALL', ['SINCE', sinceDate.toISOString()]];
         const fetchOptions = {
@@ -47,15 +56,19 @@ export class ImapService {
         };
 
         this.imap.search(searchCriteria, (err, results) => {
-          if (err) throw err;
+          if (err) {
+            console.error(`❌ Search error for ${this.user}:`, err);
+            throw err;
+          }
 
           if (!results.length) {
-            console.log('No emails from the last 30 days.');
+            console.log(`📭 No emails found for ${this.user} from the last 90 days.`);
           } else {
-            console.log(`Found ${results.length} emails from the last 30 days.`);
+            console.log(`📧 Found ${results.length} emails for ${this.user} from the last 90 days.`);
             results.sort((a, b) => a - b);
             const f = this.imap.fetch(results, fetchOptions);
             f.on('message', (msg, seqno) => {
+              console.log(`📨 Processing message #${seqno} for ${this.user}`);
               msg.once('attributes', (attrs) => {
                 if (attrs.uid > this.lastSeenUID) {
                   this.lastSeenUID = attrs.uid;
@@ -65,6 +78,7 @@ export class ImapService {
             });
 
             f.once('end', () => {
+              console.log(`✅ Finished fetching emails for ${this.user}`);
               this.startIdle();
             });
           }
@@ -98,15 +112,19 @@ export class ImapService {
     });
 
     this.imap.once('error', (err: Error) => {
-      });
+      console.error(`❌ IMAP connection error for ${this.user}:`, err.message);
+    });
 
     this.imap.once('end', () => {
-      console.log('IMAP connection closed.');
+      console.log(`🔌 IMAP connection closed for ${this.user}.`);
     });
-setTimeout(() => {
-        console.log('Attempting to reconnect IMAP...');
-        this.imap.connect();
-      }, 5000); 
+    
+    setTimeout(() => {
+      console.log(`🔄 Attempting to reconnect IMAP for ${this.user}...`);
+      this.imap.connect();
+    }, 5000); 
+    
+    console.log(`🚀 Connecting to IMAP for ${this.user}...`);
     this.imap.connect();
   }
 
@@ -115,22 +133,42 @@ setTimeout(() => {
   }
   private handleMessage(msg: Imap.ImapMessage, seqno: number, account: string, folder: string): void {
     let buffer = '';
+    console.log(`📨 Starting to process message #${seqno} for ${account}`);
 
     msg.on('body', (stream, info) => {
+      console.log(`📥 Receiving body for message #${seqno}`);
       stream.on('data', (chunk) => {
         buffer += chunk.toString('utf8');
       });
 
       stream.on('end', async () => {
+        console.log(`📝 Finished receiving body for message #${seqno}, size: ${buffer.length} bytes`);
         try {
           const parsed = await simpleParser(buffer);
+          
+          // Always use decoded subject/from/to/text
+          const subject = parsed.subject || '';
+          const fromText = parsed.from?.text || '';
+          const toText = parsed.to?.text || '';
+
+          console.log(`📧 Parsed email for ${account}: Subject="${subject}", From="${fromText}"`);
+
+          // Get clean text body
+          let cleanText = parsed.text;
+          if (!cleanText && parsed.html) {
+            cleanText = htmlToText(parsed.html, { wordwrap: false });
+          }
+          if (cleanText) {
+            cleanText = he.decode(cleanText);
+          } else {
+            cleanText = '';
+          }
+
           await indexEmail({
-            subject: parsed.subject,
-            from: parsed.from?.text,
-            to: Array.isArray(parsed.to)
-              ? parsed.to.map(addr => addr.text).join(', ')
-              : parsed.to?.text || '',
-            text: parsed.text,
+            subject,
+            from: fromText,
+            to: toText,
+            text: cleanText,
             html: parsed.html,
             folder,
             account,
@@ -138,9 +176,9 @@ setTimeout(() => {
             messageId: parsed.messageId,
           });
 
-          console.log(`Email indexed to Elasticsearch: ${parsed.subject}`);
+          console.log(`✅ Email indexed to Elasticsearch for ${account}: ${subject}`);
         } catch (err) {
-          console.error('Failed to parse or index message:', err);
+          console.error(`❌ Failed to parse or index message #${seqno} for ${account}:`, err);
         }
       });
     });

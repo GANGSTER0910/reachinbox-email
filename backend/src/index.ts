@@ -39,6 +39,24 @@ app.get('/', (_req, res) => {
   res.send('Email Backend Running');
 });
 
+// Add Elasticsearch health check
+app.get('/health', async (_req, res) => {
+  try {
+    const health = await esClient.cluster.health();
+    res.json({
+      status: 'healthy',
+      elasticsearch: health,
+      message: 'Backend and Elasticsearch are running'
+    });
+  } catch (error) {
+    res.status(500).json({
+      status: 'error',
+      error: error.message,
+      message: 'Elasticsearch connection failed'
+    });
+  }
+});
+
 app.get('/search', async (req, res) => {
   try {
     const { 
@@ -245,6 +263,28 @@ app.post('/test-notifications', async (req, res) => {
   } catch (error) {
     console.error('Error testing notifications:', error);
     res.status(500).json({ error: 'Failed to send test notifications' });
+  }
+});
+
+// Add manual email fetch trigger
+app.post('/fetch-emails', async (req, res) => {
+  try {
+    console.log('🔄 Manually triggering email fetch...');
+    
+    // Trigger email fetching for all connected accounts
+    for (const imapService of imapServices) {
+      console.log('Fetching emails for account...');
+      // This will trigger the email fetching process
+      imapService.connectrealtime();
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Email fetching triggered. Check your backend logs for progress.' 
+    });
+  } catch (error) {
+    console.error('Error triggering email fetch:', error);
+    res.status(500).json({ error: 'Failed to trigger email fetch' });
   }
 });
 

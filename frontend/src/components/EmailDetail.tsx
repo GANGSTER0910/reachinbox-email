@@ -19,7 +19,7 @@ import {
   Sparkles,
   Loader2
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, extractEmailInfo, cleanEmailContent } from "@/lib/utils";
 import { useEmailsForUI } from "@/hooks/useEmails";
 import { useCategorizeEmail } from "@/hooks/useEmails";
 
@@ -131,20 +131,12 @@ export function EmailDetail({ emailId }: EmailDetailProps) {
     return categoryConfig[category as keyof typeof categoryConfig] || categoryConfig.uncategorized;
   };
 
-  const renderEmailContent = (content: string) => {
-    // Remove HTML tags and CSS
-    const cleanContent = content
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '') // Remove style tags
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '') // Remove script tags
-      .replace(/<[^>]*>/g, '') // Remove all HTML tags
-      .replace(/&nbsp;/g, ' ') // Replace HTML entities
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .trim();
 
+
+  const renderEmailContent = (content: string) => {
+    // Use the utility function to clean the content
+    const cleanContent = cleanEmailContent(content);
+    
     // Split into paragraphs and filter out empty lines
     const paragraphs = cleanContent
       .split('\n')
@@ -168,27 +160,27 @@ export function EmailDetail({ emailId }: EmailDetailProps) {
       {/* Header */}
       <div className="p-6 border-b border-border bg-card/50">
         <div className="flex items-start justify-between mb-6">
-          <div className="flex items-start gap-4">
-            <Avatar className="h-12 w-12">
-              <AvatarFallback className="bg-primary text-primary-foreground font-bold text-lg">
-                {getInitials(email.from)}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-foreground mb-2">{email.subject || 'No Subject'}</h1>
-              <div className="flex items-center gap-3 text-sm">
-                <span className="font-medium text-foreground">{email.from || 'Unknown Sender'}</span>
-                <Badge className={cn("text-xs px-3 py-1", getCategoryConfig(email.category).color)}>
-                  {getCategoryConfig(email.category).label}
-                </Badge>
-              </div>
-              <div className="flex items-center gap-4 text-sm text-muted-foreground mt-3">
-                <span>From: <span className="font-medium">{email.from || 'Unknown'}</span></span>
-                <span>To: <span className="font-medium">{email.to || 'Unknown'}</span></span>
-                <span className="font-medium">{email.timestamp || 'Unknown'}</span>
+                      <div className="flex items-start gap-4">
+              <Avatar className="h-12 w-12">
+                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-lg">
+                  {getInitials(extractEmailInfo(email).fromText)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-foreground mb-2">{extractEmailInfo(email).subjectText}</h1>
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="font-medium text-foreground">{extractEmailInfo(email).fromText}</span>
+                  <Badge className={cn("text-xs px-3 py-1", getCategoryConfig(email.category).color)}>
+                    {getCategoryConfig(email.category).label}
+                  </Badge>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-muted-foreground mt-3">
+                  <span>From: <span className="font-medium">{extractEmailInfo(email).fromText}</span></span>
+                  <span>To: <span className="font-medium">{email.to || 'Unknown'}</span></span>
+                  <span className="font-medium">{email.timestamp || 'Unknown'}</span>
+                </div>
               </div>
             </div>
-          </div>
 
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="hover:bg-primary/10">
@@ -261,7 +253,7 @@ export function EmailDetail({ emailId }: EmailDetailProps) {
           </div>
 
           <div className="space-y-4 mb-6">
-            {(email.suggestedReplies || []).map((suggestion) => (
+            {((email as any).suggestedReplies || []).map((suggestion: any) => (
               <Card 
                 key={suggestion.id}
                 className={cn(

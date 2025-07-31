@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { emailApi, Email, SearchResponse, StatsResponse } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { cleanEmailContent } from '@/lib/utils';
 
 // Query keys for React Query
 export const emailKeys = {
@@ -89,22 +90,70 @@ export const useTestNotifications = () => {
 };
 
 // Utility function to transform email data for UI
-export const transformEmailForUI = (email: Email) => ({
-  id: email.id,
-  from: email.from,
-  fromEmail: email.from, // You might want to extract email from the from field
-  subject: email.subject,
-  preview: email.bodyPreview || email.text?.substring(0, 100) || '',
-  timestamp: new Date(email.date).toLocaleString(),
-  isRead: true, // You might want to track read status separately
-  isStarred: false, // You might want to track starred status separately
-  hasAttachment: false, // You might want to detect attachments
-  category: email.category?.toLowerCase().replace(/ /g, '-') || 'uncategorized' as any,
-  account: email.accountId,
-  content: email.text || '',
-  to: email.to,
-  date: email.date,
-});
+export const transformEmailForUI = (email: Email) => {
+  // Extract sender information more robustly
+  let fromText = email.from || '';
+  let subjectText = email.subject || '';
+  
+  // If from is empty, try to extract from email content
+  if (!fromText && email.text) {
+    // Look for common email patterns in the text
+    const fromMatch = email.text.match(/From:\s*([^\n\r]+)/i);
+    if (fromMatch) {
+      fromText = fromMatch[1].trim();
+    }
+  }
+  
+  // If subject is empty, try to extract from email content
+  if (!subjectText && email.text) {
+    // Look for subject in the text
+    const subjectMatch = email.text.match(/Subject:\s*([^\n\r]+)/i);
+    if (subjectMatch) {
+      subjectText = subjectMatch[1].trim();
+    } else {
+      // Try to extract from first meaningful line
+      const lines = email.text.split('\n').filter(line => line.trim().length > 0);
+      const firstLine = lines[0];
+      if (firstLine && firstLine.length < 100 && !firstLine.includes('@') && !firstLine.includes('http')) {
+        subjectText = firstLine.trim();
+      }
+    }
+  }
+  
+  // Generate preview text
+  let preview = email.bodyPreview || '';
+  if (!preview && email.text) {
+    // Use the utility function to clean the text
+    const cleanText = cleanEmailContent(email.text);
+    preview = cleanText.substring(0, 100);
+  }
+  
+  // Debug logging to see what data we're getting
+  console.log('Email data received:', {
+    id: email.id,
+    from: email.from,
+    subject: email.subject,
+    textLength: email.text?.length || 0,
+    extractedFrom: fromText,
+    extractedSubject: subjectText
+  });
+  
+  return {
+    id: email.id,
+    from: fromText || 'Unknown Sender',
+    subject: subjectText || 'No Subject',
+    preview: preview || 'No preview available',
+    timestamp: new Date(email.date).toLocaleString(),
+    isRead: true,
+    isStarred: false,
+    hasAttachment: false,
+    category: email.category?.toLowerCase().replace(/ /g, '-') || 'uncategorized' as any,
+    account: email.accountId,
+    content: email.text || '',
+    to: email.to || 'Unknown',
+    date: email.date,
+  };
+};
 
 // Hook for getting emails with UI transformation
 export const useEmailsForUI = (params: {
