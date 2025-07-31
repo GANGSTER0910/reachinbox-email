@@ -208,6 +208,10 @@ export const emailApi = {
     const response = await api.get(`/email/${id}`);
     return response.data;
   },
+  getAccounts: async (): Promise<any[]> => {
+    const response = await api.get('/api/accounts');
+    return response.data;
+  },
 };
 
 export default api;

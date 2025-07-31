@@ -123,6 +123,15 @@ app.get('/email/:id', async (req, res) => {
   }
 });
 
+app.get('/api/accounts', (req, res) => {
+  const accounts = emailAccounts.map(acc => ({
+    id: acc.user,
+    email: acc.user,
+    provider: 'Gmail', 
+    isConnected: true 
+  }));
+  res.json(accounts);
+});
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
