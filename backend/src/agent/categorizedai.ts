@@ -55,7 +55,7 @@ export async function category(emailContent: string): Promise<string> {
 
     const apiKey = getNextApiKey();
     const groq = new ChatGroq({
-       model: "llama-3.3-70b-versatile",
+       model: "moonshotai/kimi-k2-instruct",
       temperature: 0,
       apiKey: apiKey, 
     });

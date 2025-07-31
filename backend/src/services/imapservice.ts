@@ -62,11 +62,11 @@ export class ImapService {
 
   private fetchInitialEmails(): void {
     const sinceDate = new Date();
-    sinceDate.setDate(sinceDate.getDate() - 90);
+    sinceDate.setDate(sinceDate.getDate() - 30);
     const searchCriteria = [['SINCE', sinceDate.toISOString()]];
     const fetchOptions = { bodies: '', struct: true };
 
-    this.imap.search(searchCriteria, (err, results) => {
+    this.imap.search(searchCriteria, (err: Error | null, results: number[]) => {
       if (err || !results || results.length === 0) {
         if (err) console.error(`❌ Initial search error for ${this.user}:`, err);
         console.log(`📭 No new emails found for initial sync.`);
@@ -74,8 +74,8 @@ export class ImapService {
       }
 
       const f = this.imap.fetch(results, fetchOptions);
-      f.on('message', (msg, seqno) => this.handleMessage(msg, this.user, 'inbox'));
-      f.once('error', (err) => console.error('❌ Error fetching initial emails:', err));
+      f.on('message', (msg: Imap.ImapMessage, seqno: number) => this.handleMessage(msg, this.user, 'inbox'));
+      f.once('error', (err: any) => console.error('❌ Error fetching initial emails:', err));
       f.once('end', () => {
         console.log(`✅ Finished fetching all initial emails for ${this.user}.`);
       });
@@ -87,8 +87,8 @@ export class ImapService {
         if (err) return console.error('❌ Error opening inbox for new mail fetch:', err);
         if(numNewMsgs > 0){
             const f = this.imap.fetch(`${box.messages.total - numNewMsgs + 1}:*`, { bodies: '', struct: true });
-            f.on('message', (msg, seqno) => this.handleMessage(msg, this.user, 'inbox'));
-            f.once('error', (err) => console.error('❌ Error fetching new emails:', err));
+            f.on('message', (msg: Imap.ImapMessage, seqno: number) => this.handleMessage(msg, this.user, 'inbox'));
+            f.once('error', (err: any) => console.error('❌ Error fetching new emails:', err));
             f.once('end', () => {
                 console.log('✅ Finished fetching new emails.');
             });
@@ -98,7 +98,7 @@ export class ImapService {
 
   private handleMessage(msg: Imap.ImapMessage, account: string, folder: string): void {
     let buffer = '';
-    msg.on('body', (stream) => {
+    msg.on('body', (stream: NodeJS.ReadableStream) => {
       stream.on('data', (chunk) => buffer += chunk.toString('utf8'));
       stream.once('end', async () => {
         try {
