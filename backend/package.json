@@ -34,7 +34,6 @@
     "imap": "^0.8.19",
     "langchain": "^0.2.2",
     "mailparser": "^3.7.1",
-    "node": "^22.16.0",
     "node-imap": "^0.9.6"
   }
 }
