@@ -31,7 +31,7 @@
     "express": "^4.19.2",
     "he": "^1.2.0",
     "html-to-text": "^9.0.5",
-    "imap": "^0.8.19",
+    "imap": "^0.8.17",
     "langchain": "^0.2.2",
     "mailparser": "^3.7.1",
     "node-imap": "^0.9.6"
