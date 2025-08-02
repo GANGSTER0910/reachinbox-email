@@ -62,7 +62,7 @@ export class ImapService {
 
   private fetchInitialEmails(): void {
     const sinceDate = new Date();
-    sinceDate.setDate(sinceDate.getDate() - 30);
+    sinceDate.setDate(sinceDate.getDate() - 10);
     const searchCriteria = [['SINCE', sinceDate.toISOString()]];
     const fetchOptions = { bodies: '', struct: true };
 
